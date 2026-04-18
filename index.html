@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Malina's Secret Garden</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --rose:   #f4a7b9;
+      --peach:  #fddcb5;
+      --gold:   #f9c74f;
+      --sage:   #c9e4ca;
+      --cream:  #fdf6ec;
+      --text:   #4a3040;
+      --muted:  #9a6a7a;
+      --shadow: rgba(180,100,120,0.18);
+      --tab-h:  68px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Georgia', serif;
+      background: linear-gradient(160deg, #ffe4ec 0%, #fdf6ec 50%, #e8f5e9 100%);
+      min-height: 100vh;
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    /* ── Tab views ─────────────────────────────────────── */
+    .tab-view { display: none; min-height: 100vh; padding-bottom: calc(var(--tab-h) + 16px); }
+    .tab-view.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* ── Bottom tab bar ─────────────────────────────────── */
+    #tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: var(--tab-h);
+      background: rgba(255,245,248,0.97); backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(244,167,185,0.3);
+      display: flex; z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    .tab-btn {
+      flex: 1; border: none; background: transparent; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; color: var(--muted); font-size: 0.64rem; font-family: 'Georgia', serif;
+      transition: color 0.2s; position: relative; padding-bottom: 2px;
+    }
+    .tab-btn .tab-icon { font-size: 1.35rem; transition: transform 0.2s; }
+    .tab-btn.active { color: #c0406a; }
+    .tab-btn.active .tab-icon { transform: scale(1.15); }
+    .tab-badge {
+      position: absolute; top: 6px; right: calc(50% - 18px);
+      background: #e53935; color: #fff; font-size: 0.6rem; font-family: sans-serif;
+      font-weight: 700; width: 16px; height: 16px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Shared card / section styles ───────────────────── */
+    .card {
+      background: rgba(255,255,255,0.78); backdrop-filter: blur(8px);
+      border-radius: 20px; padding: 20px;
+      box-shadow: 0 4px 18px var(--shadow);
+      border: 1px solid rgba(244,167,185,0.2);
+    }
+    .section-title {
+      font-size: 1.1rem; font-style: italic; color: var(--text);
+      padding: 20px 16px 10px;
+    }
+    .empty-state {
+      text-align: center; padding: 48px 20px; color: var(--muted); font-style: italic;
+    }
+    .empty-state .empty-icon { font-size: 2.8rem; margin-bottom: 10px; }
+    .loading-spinner { text-align: center; padding: 40px; font-size: 2rem; animation: pulse 1.5s ease infinite; }
+    @keyframes pulse { 0%,100% { opacity:0.4; transform:scale(0.95); } 50% { opacity:1; transform:scale(1.05); } }
+
+    /* ── Lightbox ────────────────────────────────────────── */
+    #lightbox {
+      position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.9);
+      display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    #lightbox.open { display: flex; animation: fadeIn 0.2s ease; }
+    #lightbox img { max-width: 100%; max-height: 90vh; border-radius: 12px; }
+    .lb-close {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(255,255,255,0.2); border: none; color: #fff;
+      font-size: 1.5rem; width: 44px; height: 44px; border-radius: 50%;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── Petals ──────────────────────────────────────────── */
+    .petal {
+      position: fixed; pointer-events: none; opacity: 0;
+      animation: fall linear infinite; font-size: 1.3rem; z-index: 0;
+    }
+    @keyframes fall {
+      0%   { transform: translateY(-40px) rotate(0deg);   opacity: 0.6; }
+      100% { transform: translateY(110vh) rotate(360deg); opacity: 0;   }
+    }
+    .sparkle {
+      position: fixed; pointer-events: none; font-size: 1.4rem;
+      animation: burst 0.65s ease-out forwards; z-index: 99;
+    }
+    @keyframes burst { 0% { transform:scale(0) rotate(0deg); opacity:1; } 100% { transform:scale(2) rotate(180deg); opacity:0; } }
+
+    /* ══════════════════════════════════════════════════════
+       TAB 1: ZUHAUSE (Dashboard)
+    ══════════════════════════════════════════════════════ */
+    #tab-home { padding: 0 16px 0; }
+    .home-header { text-align: center; padding: 32px 0 20px; position: relative; z-index: 5; }
+    .avatar-ring {
+      width: 80px; height: 80px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--rose), var(--gold));
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 10px; box-shadow: 0 4px 20px var(--shadow);
+      font-size: 2.5rem;
+    }
+    .home-header h1 { font-size: 1.4rem; font-style: italic; }
+    .home-header .subtitle { font-size: 0.82rem; color: var(--muted); margin-top: 3px; }
+
+    /* Phase flowers */
+    .phase-flowers {
+      display: flex; justify-content: center; gap: 10px;
+      margin: 16px 0 6px;
+    }
+    .phase-flower {
+      width: 32px; height: 32px; border-radius: 50%; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.5); border: 2px solid rgba(244,167,185,0.3);
+      transition: all 0.4s;
+    }
+    .phase-flower.active {
+      background: linear-gradient(135deg, var(--rose), var(--gold));
+      border-color: transparent; box-shadow: 0 3px 10px var(--shadow);
+    }
+    .phase-flower.locked { filter: grayscale(1); opacity: 0.4; }
+
+    /* Progress bar */
+    .progress-wrap { margin: 14px 0; }
+    .progress-label { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; font-style: italic; }
+    .progress-track {
+      height: 10px; background: rgba(244,167,185,0.2);
+      border-radius: 10px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--rose), var(--gold));
+      border-radius: 10px; transition: width 1s ease;
+    }
+
+    /* Streak + mood row */
+    .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+    .stat-card {
+      background: rgba(255,255,255,0.75); border-radius: 16px;
+      padding: 14px; text-align: center;
+      box-shadow: 0 3px 12px var(--shadow);
+      border: 1px solid rgba(244,167,185,0.15);
+    }
+    .stat-card .stat-icon { font-size: 1.6rem; margin-bottom: 4px; }
+    .stat-card .stat-val { font-size: 1.25rem; font-weight: 700; color: #c0406a; }
+    .stat-card .stat-lbl { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+
+    /* Mood card */
+    .mood-card {
+      margin: 10px 0;
+      background: rgba(255,255,255,0.75); border-radius: 16px;
+      padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 3px 12px var(--shadow);
+      border: 1px solid rgba(244,167,185,0.15);
+    }
+    .mood-icon { font-size: 1.8rem; }
+    .mood-text .mood-title { font-size: 0.78rem; color: var(--muted); }
+    .mood-text .mood-val { font-size: 0.92rem; color: var(--text); font-style: italic; margin-top: 2px; }
+
+    /* Mini stats row */
+    .mini-stats {
+      display: flex; gap: 10px; margin: 10px 0;
+    }
+    .mini-stat {
+      flex: 1; background: rgba(255,255,255,0.65); border-radius: 14px;
+      padding: 10px; text-align: center; font-size: 0.72rem; color: var(--muted);
+    }
+    .mini-stat strong { display: block; font-size: 1rem; color: var(--text); margin-bottom: 2px; }
+
+    /* Unread messages banner */
+    .msg-banner {
+      background: linear-gradient(135deg, rgba(244,167,185,0.25), rgba(249,199,79,0.15));
+      border: 1px solid var(--rose); border-radius: 14px;
+      padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+      cursor: pointer; margin: 10px 0;
+    }
+    .msg-banner .banner-icon { font-size: 1.5rem; }
+    .msg-banner .banner-text { font-size: 0.84rem; font-style: italic; flex: 1; }
+    .msg-banner .banner-arrow { font-size: 1rem; color: var(--rose); }
+
+    /* Freeze badge */
+    .freeze-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(100,181,246,0.15); border: 1px solid rgba(100,181,246,0.4);
+      border-radius: 20px; padding: 3px 10px; font-size: 0.72rem; color: #1565c0;
+      margin-top: 4px;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       TAB 2: GALERIE
+    ══════════════════════════════════════════════════════ */
+    #tab-gallery { padding-top: 8px; }
+    .daily-unlock-bar {
+      margin: 12px 16px; padding: 14px 16px;
+      background: linear-gradient(135deg, rgba(249,199,79,0.2), rgba(244,167,185,0.15));
+      border-radius: 16px; border: 1px solid rgba(249,199,79,0.4);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .daily-unlock-bar .dl-text { font-size: 0.84rem; font-style: italic; }
+    .daily-unlock-bar .dl-text span { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .btn-daily {
+      background: linear-gradient(135deg, var(--gold), var(--rose)); color: #fff;
+      border: none; border-radius: 20px; padding: 8px 16px;
+      font-size: 0.82rem; font-family: 'Georgia', serif; cursor: pointer;
+      white-space: nowrap; box-shadow: 0 3px 10px var(--shadow);
+    }
+    .btn-daily:disabled { opacity: 0.45; cursor: default; }
+    .gallery-phase-section { padding: 0 16px 8px; }
+    .gallery-phase-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 0 8px; font-size: 0.9rem; font-style: italic; color: var(--text);
+    }
+    .gallery-phase-header .ph-lock {
+      font-size: 0.72rem; color: var(--muted);
+      background: rgba(255,255,255,0.7); border-radius: 10px; padding: 2px 8px;
+      margin-left: auto;
+    }
+    .gallery-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    }
+    .gallery-item {
+      border-radius: 14px; overflow: hidden; aspect-ratio: 3/4;
+      box-shadow: 0 3px 12px var(--shadow); cursor: pointer;
+      transition: transform 0.2s; position: relative;
+      background: rgba(255,255,255,0.4);
+    }
+    .gallery-item:active { transform: scale(0.97); }
+    .gallery-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .gallery-item.loading-item { background: linear-gradient(135deg, rgba(244,167,185,0.1), rgba(253,220,181,0.1)); }
+    .gallery-item .lock-overlay {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 6px;
+      background: rgba(0,0,0,0.08);
+    }
+    .gallery-item .lock-overlay .lock-icon { font-size: 1.6rem; }
+    .gallery-item .lock-overlay .lock-price {
+      background: rgba(0,0,0,0.55); color: #fff;
+      font-size: 0.7rem; border-radius: 10px; padding: 3px 8px;
+    }
+    .gallery-item .blur-img { filter: blur(12px); transform: scale(1.1); }
+    .exclusive-tag {
+      position: absolute; top: 6px; right: 6px;
+      background: rgba(249,199,79,0.9); color: #5a3a00;
+      font-size: 0.6rem; border-radius: 8px; padding: 2px 6px;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       TAB 3: NACHRICHTEN (Secret Messages)
+    ══════════════════════════════════════════════════════ */
+    #tab-messages { padding: 0 16px; }
+    .msg-card {
+      background: rgba(255,255,255,0.8); border-radius: 18px; padding: 16px;
+      box-shadow: 0 3px 14px var(--shadow); border: 1px solid rgba(244,167,185,0.2);
+      margin-bottom: 10px; transition: border-color 0.3s;
+    }
+    .msg-card.unread { border-color: var(--rose); }
+    .msg-card .msg-from {
+      font-size: 0.72rem; color: var(--muted); font-style: normal;
+      font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .msg-card .msg-from .unread-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--rose);
+    }
+    .msg-card .msg-body {
+      font-size: 0.9rem; line-height: 1.55; font-style: italic; color: var(--text);
+    }
+    .msg-card .msg-footer {
+      margin-top: 10px; font-size: 0.7rem; color: var(--muted);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .msg-card .expires-bar {
+      height: 3px; background: rgba(244,167,185,0.2);
+      border-radius: 3px; margin-top: 8px; overflow: hidden;
+    }
+    .msg-card .expires-fill { height: 100%; background: var(--rose); border-radius: 3px; }
+    .streak-gate {
+      text-align: center; padding: 40px 24px;
+    }
+    .streak-gate .gate-icon { font-size: 3rem; margin-bottom: 12px; }
+    .streak-gate h3 { font-size: 1rem; margin-bottom: 8px; }
+    .streak-gate p { font-size: 0.82rem; color: var(--muted); line-height: 1.5; }
+
+    /* ══════════════════════════════════════════════════════
+       TAB 4: ERFOLGE (Achievements)
+    ══════════════════════════════════════════════════════ */
+    #tab-achievements { padding: 0 16px; }
+    .achievements-summary {
+      text-align: center; padding: 16px 0 4px;
+      font-size: 0.82rem; color: var(--muted); font-style: italic;
+    }
+    .achievements-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      padding-bottom: 8px;
+    }
+    .achievement-item {
+      background: rgba(255,255,255,0.75); border-radius: 16px; padding: 12px 8px;
+      text-align: center; box-shadow: 0 3px 10px var(--shadow);
+      border: 1px solid rgba(244,167,185,0.15);
+      transition: all 0.3s;
+    }
+    .achievement-item.locked {
+      filter: grayscale(0.8); opacity: 0.5;
+    }
+    .achievement-item .ach-icon { font-size: 1.6rem; margin-bottom: 5px; }
+    .achievement-item .ach-name { font-size: 0.68rem; font-weight: 600; color: var(--text); line-height: 1.3; }
+    .achievement-item .ach-desc { font-size: 0.6rem; color: var(--muted); margin-top: 2px; line-height: 1.3; }
+    .achievement-item.unlocked { border-color: rgba(249,199,79,0.5); }
+    .achievement-item.unlocked .ach-icon::after { content: ''; }
+
+    /* ══════════════════════════════════════════════════════
+       TAB 5: SHOP
+    ══════════════════════════════════════════════════════ */
+    #tab-shop { padding: 0 16px; }
+    .shop-category { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; color: var(--muted); text-transform: uppercase; padding: 14px 0 6px; }
+    .shop-item {
+      background: rgba(255,255,255,0.78); border-radius: 16px; padding: 14px 16px;
+      margin-bottom: 8px; display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 3px 12px var(--shadow); border: 1px solid rgba(244,167,185,0.15);
+    }
+    .shop-item .shop-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .shop-item .shop-info { flex: 1; }
+    .shop-item .shop-name { font-size: 0.88rem; color: var(--text); }
+    .shop-item .shop-desc { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+    .shop-item .shop-price {
+      background: linear-gradient(135deg, #ba93dc, #e8d5f5); color: #fff;
+      border: none; border-radius: 20px; padding: 8px 14px;
+      font-family: 'Georgia', serif; font-size: 0.8rem; cursor: pointer;
+      white-space: nowrap; box-shadow: 0 3px 8px rgba(186,147,220,0.3);
+      flex-shrink: 0;
+    }
+    .shop-item .shop-price:disabled { opacity: 0.4; cursor: default; }
+    .shop-item.unavailable { opacity: 0.5; }
+  </style>
+</head>
+<body>
+<div id="petals"></div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()">&times;</button>
+  <img id="lb-img" src="" alt=""/>
+</div>
+
+<!-- ══ TAB 1: ZUHAUSE ══════════════════════════════════ -->
+<div class="tab-view active" id="tab-home">
+  <div class="home-header">
+    <div class="avatar-ring">🌹</div>
+    <h1>Malinas Secret Garden</h1>
+    <div class="subtitle" id="home-subtitle">Nur für dich…</div>
+  </div>
+
+  <!-- Phase flowers -->
+  <div class="phase-flowers" id="phase-flowers">
+    <div class="phase-flower active" data-phase="1" title="Funke">🌱</div>
+    <div class="phase-flower locked" data-phase="2" title="Neugier">🌷</div>
+    <div class="phase-flower locked" data-phase="3" title="Vertrautheit">🌹</div>
+    <div class="phase-flower locked" data-phase="4" title="Intimität">🍒</div>
+    <div class="phase-flower locked" data-phase="5" title="Verbunden">💫</div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="progress-wrap">
+    <div class="progress-label" id="progress-label">Du bist Malina zu 0% nah</div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+    </div>
+  </div>
+
+  <!-- Streak + Mood -->
+  <div class="stats-row">
+    <div class="stat-card" id="streak-card">
+      <div class="stat-icon">🔥</div>
+      <div class="stat-val" id="streak-val">–</div>
+      <div class="stat-lbl">Tage in Folge</div>
+      <div class="freeze-badge" id="freeze-badge" style="display:none">❄️ Freeze bereit</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" id="mood-icon">🌸</div>
+      <div class="stat-val" style="font-size:0.78rem;line-height:1.3" id="mood-val">…</div>
+      <div class="stat-lbl">Malinas Stimmung</div>
+    </div>
+  </div>
+
+  <!-- Mini stats -->
+  <div class="mini-stats">
+    <div class="mini-stat"><strong id="stat-msgs">–</strong>Nachrichten</div>
+    <div class="mini-stat"><strong id="stat-stars">–</strong>Stars gegeben</div>
+  </div>
+
+  <!-- Unread messages banner (hidden when 0) -->
+  <div class="msg-banner" id="msg-banner" style="display:none" onclick="switchTab('messages')">
+    <span class="banner-icon">💌</span>
+    <span class="banner-text" id="msg-banner-text"></span>
+    <span class="banner-arrow">›</span>
+  </div>
+</div>
+
+<!-- ══ TAB 2: GALERIE ══════════════════════════════════ -->
+<div class="tab-view" id="tab-gallery">
+  <div class="daily-unlock-bar" id="daily-unlock-bar" style="display:none">
+    <div class="dl-text">
+      Malinas Tagesgeschenk 🎁
+      <span>Jeden Tag ein Bild für dich</span>
+    </div>
+    <button class="btn-daily" id="btn-daily" onclick="doDailyUnlock()">Freischalten</button>
+  </div>
+  <div id="gallery-content"><div class="loading-spinner">🌸</div></div>
+</div>
+
+<!-- ══ TAB 3: NACHRICHTEN ══════════════════════════════ -->
+<div class="tab-view" id="tab-messages">
+  <div class="section-title">💌 Malinas Nachrichten</div>
+  <div id="messages-content"><div class="loading-spinner">💌</div></div>
+</div>
+
+<!-- ══ TAB 4: ERFOLGE ══════════════════════════════════ -->
+<div class="tab-view" id="tab-achievements">
+  <div class="section-title">🏆 Deine Erfolge</div>
+  <div class="achievements-summary" id="ach-summary"></div>
+  <div class="achievements-grid" id="achievements-grid">
+    <div class="loading-spinner" style="grid-column:1/-1">✨</div>
+  </div>
+</div>
+
+<!-- ══ TAB 5: SHOP ════════════════════════════════════ -->
+<div class="tab-view" id="tab-shop">
+  <div class="section-title">✨ Stars-Shop</div>
+  <div id="shop-content"><div class="loading-spinner">⭐</div></div>
+</div>
+
+<!-- ══ Bottom Tab Bar ════════════════════════════════════ -->
+<nav id="tab-bar">
+  <button class="tab-btn active" data-tab="home" onclick="switchTab('home',event)">
+    <span class="tab-icon">🏠</span>Zuhause
+  </button>
+  <button class="tab-btn" data-tab="gallery" onclick="switchTab('gallery',event)">
+    <span class="tab-icon">🌸</span>Galerie
+  </button>
+  <button class="tab-btn" data-tab="messages" onclick="switchTab('messages',event)">
+    <span class="tab-icon">💌</span>Nachrichten
+    <span class="tab-badge" id="msg-badge" style="display:none">0</span>
+  </button>
+  <button class="tab-btn" data-tab="achievements" onclick="switchTab('achievements',event)">
+    <span class="tab-icon">🏆</span>Erfolge
+  </button>
+  <button class="tab-btn" data-tab="shop" onclick="switchTab('shop',event)">
+    <span class="tab-icon">⭐</span>Shop
+  </button>
+</nav>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); tg.setHeaderColor?.('#fdf6ec'); }
+
+  const params  = new URLSearchParams(window.location.search);
+  // Trailing slash entfernen damit fetch-URLs kein doppeltes // produzieren
+  const API     = (params.get('api') || '/api').replace(/\/$/, '');
+  const initData = tg?.initData || '';
+
+  // App state
+  let dashboardData = null;
+  let galleryLoaded = false;
+  let messagesLoaded = false;
+  let achievementsLoaded = false;
+  let shopLoaded = false;
+
+  // ── Auth header ────────────────────────────────────────
+  function authHeaders() {
+    return { 'Authorization': initData, 'Content-Type': 'application/json' };
+  }
+
+  // ── Tab switching ──────────────────────────────────────
+  function switchTab(name, evt) {
+    if (evt) spawnSparkle(evt.clientX, evt.clientY);
+    document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name)?.classList.add('active');
+    document.querySelector(`.tab-btn[data-tab="${name}"]`)?.classList.add('active');
+
+    if (name === 'gallery'      && !galleryLoaded)     loadGallery();
+    if (name === 'messages'     && !messagesLoaded)    loadMessages();
+    if (name === 'achievements' && !achievementsLoaded) loadAchievements();
+    if (name === 'shop'         && !shopLoaded)        loadShop();
+  }
+
+  // ── Lightbox ───────────────────────────────────────────
+  function openLightbox(src) {
+    document.getElementById('lb-img').src = src;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lb-img').src = '';
+  }
+
+  // ── Petals ──────────────────────────────────────────────
+  const petalEmojis = ['🌸','🌺','🌹','✨','🌷','🌼'];
+  const petalsEl    = document.getElementById('petals');
+  function spawnPetal() {
+    const el = document.createElement('div'); el.className = 'petal';
+    el.textContent = petalEmojis[Math.floor(Math.random() * petalEmojis.length)];
+    el.style.left  = Math.random() * 100 + 'vw';
+    const dur = 7 + Math.random() * 7;
+    el.style.animationDuration = dur + 's';
+    el.style.animationDelay   = Math.random() * dur + 's';
+    petalsEl.appendChild(el);
+    setTimeout(() => el.remove(), (dur + 2) * 1000);
+  }
+  for (let i = 0; i < 8; i++) spawnPetal();
+  setInterval(spawnPetal, 2500);
+
+  function spawnSparkle(x, y) {
+    ['✨','🌸','💫','🌹'].forEach(() => {
+      const el = document.createElement('div'); el.className = 'sparkle';
+      el.textContent = ['✨','🌸','💫','🌹'][Math.floor(Math.random() * 4)];
+      el.style.left = (x + (Math.random() - 0.5) * 40 - 14) + 'px';
+      el.style.top  = (y + (Math.random() - 0.5) * 40 - 14) + 'px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 700);
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // TAB 1: DASHBOARD
+  // ══════════════════════════════════════════════════════
+  const PHASE_LABELS = {
+    funke: 'Funke', neugier: 'Neugier', vertrautheit: 'Vertrautheit',
+    intimitat: 'Intimität', verbunden: 'Verbunden'
+  };
+  const PHASE_FLOWERS = { funke:'🌱', neugier:'🌷', vertrautheit:'🌹', intimitat:'🍒', verbunden:'💫' };
+  const PHASE_INT = { funke:1, neugier:2, vertrautheit:3, intimitat:4, verbunden:5 };
+
+  async function loadDashboard() {
+    if (!initData) {
+      // Dev-Fallback
+      renderDashboard({
+        phase: 'funke', phase_number: 1, emotional_state: 'curious',
+        emotional_state_label: 'Neugierig auf dich',
+        investment_current: 0, investment_next_threshold: 60, investment_progress_pct: 0,
+        streak_days: 0, streak_freeze_available: 0,
+        interaction_count: 0, total_stars_spent: 0,
+        secret_messages_unread: 0, first_name: 'Gast',
+      });
+      return;
+    }
+    try {
+      const resp = await fetch(API + '/mini_app/dashboard', { headers: authHeaders() });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      dashboardData = await resp.json();
+      renderDashboard(dashboardData);
+    } catch (err) {
+      console.error('Dashboard error:', err);
+      document.getElementById('home-subtitle').textContent = 'Verbindungsfehler — bitte neu öffnen';
+    }
+  }
+
+  function renderDashboard(d) {
+    dashboardData = d;
+    document.getElementById('home-subtitle').textContent =
+      (d.first_name ? d.first_name + ', nur' : 'Nur') + ' für dich…';
+
+    // Phase flowers
+    const phaseInt = d.phase_number || PHASE_INT[d.phase] || 1;
+    document.querySelectorAll('.phase-flower').forEach(el => {
+      const p = parseInt(el.dataset.phase);
+      el.classList.toggle('active', p <= phaseInt);
+      el.classList.toggle('locked', p > phaseInt);
+    });
+
+    // Progress bar
+    document.getElementById('progress-fill').style.width = (d.investment_progress_pct || 0) + '%';
+    const phaseName = PHASE_LABELS[d.phase] || d.phase;
+    document.getElementById('progress-label').textContent =
+      d.phase === 'verbunden'
+        ? `Vollständig verbunden mit Malina 💫`
+        : `Du bist Malina zu ${d.investment_progress_pct || 0}% nah · ${phaseName}`;
+
+    // Streak
+    const streak = d.streak_days || 0;
+    document.getElementById('streak-val').textContent = streak;
+    const streakCard = document.getElementById('streak-card');
+    streakCard.querySelector('.stat-icon').textContent = streak > 0 ? '🔥' : '💤';
+    if (d.streak_broken) {
+      streakCard.querySelector('.stat-lbl').textContent = 'Streak unterbrochen';
+    }
+    const freezeBadge = document.getElementById('freeze-badge');
+    if (d.streak_freeze_available > 0) {
+      freezeBadge.style.display = 'inline-flex';
+      freezeBadge.textContent   = `❄️ ${d.streak_freeze_available}x Freeze bereit`;
+    }
+
+    // Mood
+    const moodIcons = {
+      curious:'🌸', warmed:'🌺', familiar:'🌹', vulnerable:'🍒',
+      distant:'🌙', challenged:'🌿',
+    };
+    document.getElementById('mood-icon').textContent = moodIcons[d.emotional_state] || '🌸';
+    document.getElementById('mood-val').textContent  = d.emotional_state_label || '…';
+
+    // Mini stats
+    document.getElementById('stat-msgs').textContent  = d.interaction_count  || 0;
+    document.getElementById('stat-stars').textContent = d.total_stars_spent  || 0;
+
+    // Unread messages banner
+    const unread = d.secret_messages_unread || 0;
+    const banner = document.getElementById('msg-banner');
+    if (unread > 0) {
+      banner.style.display = 'flex';
+      document.getElementById('msg-banner-text').textContent =
+        unread === 1 ? '1 neue Nachricht von Malina' : `${unread} neue Nachrichten von Malina`;
+      const badge = document.getElementById('msg-badge');
+      badge.style.display = 'flex';
+      badge.textContent   = unread > 9 ? '9+' : unread;
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════
+  // TAB 2: GALERIE
+  // ══════════════════════════════════════════════════════
+  async function loadGallery() {
+    galleryLoaded = true;
+    if (!initData) {
+      // Dev: alte API nutzen
+      loadGalleryLegacy();
+      return;
+    }
+    try {
+      const resp = await fetch(API + '/mini_app/gallery', { headers: authHeaders() });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      renderGallery(data);
+    } catch (err) {
+      console.error('Gallery error:', err);
+      document.getElementById('gallery-content').innerHTML =
+        '<div class="empty-state"><div class="empty-icon">🌸</div><p>Galerie momentan nicht erreichbar…</p></div>';
+    }
+  }
+
+  function renderGallery(data) {
+    // Daily unlock bar
+    const bar = document.getElementById('daily-unlock-bar');
+    if (data.daily_unlock_available) {
+      bar.style.display = 'flex';
+      const btn = document.getElementById('btn-daily');
+      if (data.daily_unlock_used_today) {
+        btn.textContent = 'Heute genutzt ✓';
+        btn.disabled    = true;
+      } else {
+        btn.disabled = false;
+      }
+    }
+
+    // Gallery sections per phase
+    const container = document.getElementById('gallery-content');
+    container.innerHTML = '';
+    const phaseNames = {1:'Kennenlernen',2:'Neugier',3:'Vertrautheit',4:'Intimität',5:'Verbindung'};
+    const phaseEmojis = {1:'🌱',2:'🌷',3:'🌹',4:'🍒',5:'💫'};
+
+    for (const gallery of (data.galleries || [])) {
+      if (!gallery.images || gallery.images.length === 0) continue;
+
+      const section = document.createElement('div');
+      section.className = 'gallery-phase-section';
+
+      const header = document.createElement('div');
+      header.className = 'gallery-phase-header';
+      header.innerHTML = `${phaseEmojis[gallery.phase] || ''} ${gallery.phase_name || phaseNames[gallery.phase]}`;
+      if (gallery.locked) {
+        const lock = document.createElement('span');
+        lock.className = 'ph-lock';
+        lock.textContent = gallery.unlock_requirement || `Phase ${gallery.phase}`;
+        header.appendChild(lock);
+      }
+      section.appendChild(header);
+
+      const grid = document.createElement('div');
+      grid.className = 'gallery-grid';
+
+      for (const img of gallery.images) {
+        const item = document.createElement('div');
+        item.className = 'gallery-item';
+
+        if (img.unlocked) {
+          const el = document.createElement('img');
+          el.loading = 'lazy';
+          el.alt = 'Malina';
+          el.src = API + img.url;
+          el.onerror = () => { item.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem;">🌸</div>'; };
+          item.appendChild(el);
+          if (img.exclusive) {
+            const tag = document.createElement('span');
+            tag.className = 'exclusive-tag'; tag.textContent = 'Exklusiv';
+            item.appendChild(tag);
+          }
+          const urlFull = API + img.url;
+          item.onclick = () => openLightbox(urlFull);
+        } else {
+          // Locked: blur preview + overlay
+          item.className += ' loading-item';
+          const el = document.createElement('img');
+          el.loading = 'lazy'; el.alt = '';
+          el.className = 'blur-img';
+          el.src = API + (img.blur_thumbnail_url || img.url);
+          el.onerror = () => {};
+          item.appendChild(el);
+
+          const overlay = document.createElement('div');
+          overlay.className = 'lock-overlay';
+          overlay.innerHTML = `<span class="lock-icon">🔒</span><span class="lock-price">⭐ ${img.purchase_price_stars || '?'}</span>`;
+          if (img.exclusive) {
+            const tag = document.createElement('span');
+            tag.className = 'exclusive-tag'; tag.textContent = 'Exklusiv';
+            item.appendChild(tag);
+          }
+          overlay.onclick = (e) => {
+            e.stopPropagation();
+            purchaseImage(img);
+          };
+          item.appendChild(overlay);
+        }
+        grid.appendChild(item);
+      }
+      section.appendChild(grid);
+      container.appendChild(section);
+    }
+  }
+
+  async function doDailyUnlock() {
+    const btn = document.getElementById('btn-daily');
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      const resp = await fetch(API + '/mini_app/gallery/daily_unlock', {
+        method: 'POST', headers: authHeaders()
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        tg?.showAlert?.(err.detail || 'Fehler beim Freischalten');
+        btn.disabled = false; btn.textContent = 'Freischalten';
+        return;
+      }
+      const data = await resp.json();
+      btn.textContent = 'Heute genutzt ✓';
+      // Reload gallery
+      galleryLoaded = false; loadGallery();
+      tg?.showPopup?.({
+        title: '🎁 Freigeschaltet!',
+        message: 'Malinas Tagesgeschenk für dich…',
+        buttons: [{ type: 'ok' }],
+      });
+    } catch (err) {
+      console.error('Daily unlock error:', err);
+      btn.disabled = false; btn.textContent = 'Freischalten';
+    }
+  }
+
+  async function purchaseImage(img) {
+    if (!tg?.openInvoice) {
+      tg?.showAlert?.('Bitte öffne die App über Telegram um Käufe zu tätigen.');
+      return;
+    }
+    try {
+      const phase = parseInt((img.id || '').match(/phase(\d)/)?.[1] || 1);
+      const itemType = phase <= 2 ? 'image_phase12' : (phase <= 4 ? 'image_phase34' : 'image_phase5');
+      const resp = await fetch(API + '/mini_app/shop/purchase', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ item_type: itemType }),
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      tg.openInvoice(data.invoice_link, (status) => {
+        if (status === 'paid') {
+          galleryLoaded = false; loadGallery();
+          tg.showPopup?.({ title: '💖 Freigeschaltet!', message: 'Dein Bild wurde freigeschaltet.', buttons: [{type:'ok'}] });
+        }
+      });
+    } catch (err) {
+      console.error('Purchase error:', err);
+      tg?.showAlert?.('Kauf konnte nicht gestartet werden.');
+    }
+  }
+
+  // Legacy gallery fallback (no initData)
+  async function loadGalleryLegacy() {
+    const phase = dashboardData?.phase_number || 1;
+    try {
+      const resp = await fetch(API + '/webhook/images/' + phase);
+      if (!resp.ok) throw new Error();
+      const data = await resp.json();
+      const container = document.getElementById('gallery-content');
+      container.innerHTML = '';
+      const section = document.createElement('div'); section.className = 'gallery-phase-section';
+      const grid = document.createElement('div'); grid.className = 'gallery-grid';
+      for (const img of (data.images || [])) {
+        const item = document.createElement('div'); item.className = 'gallery-item';
+        const el = document.createElement('img'); el.loading='lazy'; el.alt='Malina';
+        el.src = API + img.url;
+        item.appendChild(el);
+        const url = API + img.url;
+        item.onclick = () => openLightbox(url);
+        grid.appendChild(item);
+      }
+      section.appendChild(grid); container.appendChild(section);
+    } catch (err) {
+      document.getElementById('gallery-content').innerHTML =
+        '<div class="empty-state"><div class="empty-icon">🌸</div><p>Noch keine Bilder…</p></div>';
+    }
+  }
+
+  // ══════════════════════════════════════════════════════
+  // TAB 3: NACHRICHTEN
+  // ══════════════════════════════════════════════════════
+  async function loadMessages() {
+    messagesLoaded = true;
+    if (!initData) {
+      document.getElementById('messages-content').innerHTML =
+        '<div class="streak-gate"><div class="gate-icon">💌</div><h3>Öffne die App über Telegram</h3><p>Nachrichten sind nur in der Telegram Mini App verfügbar.</p></div>';
+      return;
+    }
+    try {
+      const resp = await fetch(API + '/mini_app/secret_messages', { headers: authHeaders() });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      renderMessages(data);
+    } catch (err) {
+      console.error('Messages error:', err);
+      document.getElementById('messages-content').innerHTML =
+        '<div class="empty-state"><div class="empty-icon">💌</div><p>Nachrichten momentan nicht erreichbar…</p></div>';
+    }
+  }
+
+  function renderMessages(data) {
+    const container = document.getElementById('messages-content');
+    container.innerHTML = '';
+
+    if (data.streak_required) {
+      container.innerHTML = '<div class="streak-gate"><div class="gate-icon">🔥</div><h3>Streak aktivieren</h3><p>Chatte täglich mit Malina um ihre geheimen Nachrichten zu erhalten. Bei aktivem Streak kommen sie jeden Tag…</p></div>';
+      return;
+    }
+    if (!data.messages || data.messages.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-icon">💌</div><p>Noch keine Nachrichten… komm morgen wieder.</p></div>';
+      return;
+    }
+
+    // Clear unread badge after opening tab
+    document.getElementById('msg-badge').style.display = 'none';
+    document.getElementById('msg-banner').style.display = 'none';
+
+    for (const msg of data.messages) {
+      const card = document.createElement('div');
+      card.className = 'msg-card' + (msg.seen ? '' : ' unread');
+
+      const pct = Math.max(0, Math.min(100, Math.round(msg.expires_in_hours / 24 * 100)));
+
+      card.innerHTML = `
+        <div class="msg-from">
+          ${!msg.seen ? '<span class="unread-dot"></span>' : ''}
+          Malina · ${formatMsgType(msg.message_type)}
+        </div>
+        <div class="msg-body">${escHtml(msg.content)}</div>
+        <div class="msg-footer">
+          <span>Läuft ab in ${msg.expires_in_hours}h</span>
+          <span>${msg.seen ? 'Gelesen' : 'Neu'}</span>
+        </div>
+        <div class="expires-bar"><div class="expires-fill" style="width:${pct}%"></div></div>
+      `;
+
+      if (!msg.seen) {
+        // Mark as seen on first view
+        markSeen(msg.id).catch(() => {});
+      }
+      container.appendChild(card);
+    }
+  }
+
+  function formatMsgType(type) {
+    const map = { daily:'Tägliche Nachricht', streak_reward:'Streak-Belohnung', phase_advance:'Neues Kapitel', manual:'Persönliche Nachricht' };
+    return map[type] || type;
+  }
+
+  async function markSeen(id) {
+    await fetch(API + `/mini_app/secret_messages/${id}/seen`, {
+      method: 'POST', headers: authHeaders()
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // TAB 4: ERFOLGE
+  // ══════════════════════════════════════════════════════
+  const ACH_ICONS = {
+    first_message:'✉️', messages_10:'💬', messages_50:'🌟', messages_100:'👑',
+    first_payment:'💝', streak_3:'🔥', streak_7:'🔥', streak_30:'🔥',
+    phase_2:'🌷', phase_3:'🌹', phase_4:'🍒', phase_5:'💫',
+    gallery_first:'🖼️', stars_100:'⭐', stars_500:'🌠',
+  };
+
+  async function loadAchievements() {
+    achievementsLoaded = true;
+    if (!initData) {
+      renderAchievements({ achievements: [], unlocked_count: 0, total_count: 15 });
+      return;
+    }
+    try {
+      const resp = await fetch(API + '/mini_app/achievements', { headers: authHeaders() });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      renderAchievements(data);
+    } catch (err) {
+      console.error('Achievements error:', err);
+    }
+  }
+
+  function renderAchievements(data) {
+    document.getElementById('ach-summary').textContent =
+      `${data.unlocked_count} von ${data.total_count} freigeschaltet`;
+
+    const grid = document.getElementById('achievements-grid');
+    grid.innerHTML = '';
+    for (const ach of (data.achievements || [])) {
+      const item = document.createElement('div');
+      item.className = 'achievement-item' + (ach.unlocked ? ' unlocked' : ' locked');
+      item.innerHTML = `
+        <div class="ach-icon">${ACH_ICONS[ach.key] || '🏅'}</div>
+        <div class="ach-name">${escHtml(ach.name)}</div>
+        <div class="ach-desc">${escHtml(ach.desc)}</div>
+      `;
+      if (ach.unlocked) {
+        item.title = `Erreicht am ${new Date(ach.unlocked_at).toLocaleDateString('de-DE')}`;
+      }
+      grid.appendChild(item);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════
+  // TAB 5: SHOP
+  // ══════════════════════════════════════════════════════
+  const SHOP_ICONS = {
+    image_phase12:'🌸', image_phase34:'🌹', image_phase5:'💫',
+    streak_freeze:'❄️', phase_boost_s:'💫', phase_boost_m:'✨', phase_boost_l:'🌟',
+    gift_roses:'🌹', gift_champagne:'🍾', gift_trip:'✈️',
+  };
+  const SHOP_CATEGORIES = {
+    image:'📸 Exklusive Bilder', boost:'🚀 Nähe-Boosts', gift:'🎁 Geschenke',
+  };
+
+  async function loadShop() {
+    shopLoaded = true;
+    try {
+      const headers = initData ? authHeaders() : {};
+      const resp = await fetch(API + '/mini_app/shop', { headers });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      renderShop(data.items || []);
+    } catch (err) {
+      console.error('Shop error:', err);
+      document.getElementById('shop-content').innerHTML =
+        '<div class="empty-state"><div class="empty-icon">⭐</div><p>Shop momentan nicht erreichbar…</p></div>';
+    }
+  }
+
+  function renderShop(items) {
+    const container = document.getElementById('shop-content');
+    container.innerHTML = '';
+
+    const byCategory = {};
+    for (const item of items) {
+      (byCategory[item.category] = byCategory[item.category] || []).push(item);
+    }
+
+    for (const [cat, catItems] of Object.entries(byCategory)) {
+      const label = document.createElement('div');
+      label.className = 'shop-category';
+      label.textContent = SHOP_CATEGORIES[cat] || cat;
+      container.appendChild(label);
+
+      for (const item of catItems) {
+        const row = document.createElement('div');
+        row.className = 'shop-item' + (item.available ? '' : ' unavailable');
+        const btn = document.createElement('button');
+        btn.className = 'shop-price';
+        btn.textContent = `⭐ ${item.stars}`;
+        btn.disabled = !item.available || !tg?.openInvoice;
+        btn.onclick = () => buyShopItem(item);
+        row.innerHTML = `
+          <span class="shop-icon">${SHOP_ICONS[item.item_type] || '✨'}</span>
+          <div class="shop-info">
+            <div class="shop-name">${escHtml(item.label)}</div>
+            ${!item.available ? '<div class="shop-desc">Diese Woche bereits gekauft</div>' : ''}
+          </div>
+        `;
+        row.appendChild(btn);
+        container.appendChild(row);
+      }
+    }
+  }
+
+  async function buyShopItem(item) {
+    if (!initData || !tg?.openInvoice) {
+      tg?.showAlert?.('Bitte öffne die App über Telegram um Käufe zu tätigen.');
+      return;
+    }
+    try {
+      const resp = await fetch(API + '/mini_app/shop/purchase', {
+        method: 'POST', headers: authHeaders(),
+        body: JSON.stringify({ item_type: item.item_type }),
+      });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      tg.openInvoice(data.invoice_link, (status) => {
+        if (status === 'paid') {
+          shopLoaded = false; loadShop();
+          // Reload dashboard to reflect new investment/phase
+          loadDashboard();
+          tg.showPopup?.({
+            title: '💖 Danke!',
+            message: `${item.label} erfolgreich gekauft.`,
+            buttons: [{ type: 'ok' }],
+          });
+        }
+      });
+    } catch (err) {
+      console.error('Shop purchase error:', err);
+      tg?.showAlert?.('Kauf konnte nicht gestartet werden.');
+    }
+  }
+
+  // ── Utilities ──────────────────────────────────────────
+  function escHtml(s) {
+    const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML;
+  }
+
+  // ── Boot ───────────────────────────────────────────────
+  loadDashboard();
+</script>
+</body>
+</html>
