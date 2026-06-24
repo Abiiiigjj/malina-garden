@@ -478,14 +478,130 @@
   let achievementsLoaded = false;
   let shopLoaded = false;
 
+  // ── Haptic feedback utility ───────────────────────────
+  function triggerHaptic(type, style) {
+    try {
+      const haptic = window.Telegram?.WebApp?.HapticFeedback;
+      if (!haptic) return;
+      if (type === 'impact') {
+        haptic.impactOccurred(style || 'light');
+      } else if (type === 'notification') {
+        haptic.notificationOccurred(style || 'success');
+      } else if (type === 'selection') {
+        haptic.selectionChanged();
+      }
+    } catch (e) {
+      console.warn('Haptic feedback error:', e);
+    }
+  }
+
+  // ── Phase-based custom theme styling ──────────────────
+  const PHASE_THEMES = {
+    funke: {
+      rose: '#f4a7b9', peach: '#fddcb5', gold: '#f9c74f', sage: '#c9e4ca', cream: '#fdf6ec',
+      text: '#4a3040', muted: '#9a6a7a', shadow: 'rgba(180,100,120,0.18)',
+      bg: 'linear-gradient(160deg, #ffe4ec 0%, #fdf6ec 50%, #e8f5e9 100%)', header: '#fdf6ec'
+    },
+    neugier: {
+      rose: '#f78fa7', peach: '#ffe5b4', gold: '#f9c74f', sage: '#c9e4ca', cream: '#fffdf9',
+      text: '#482c3c', muted: '#a26b7d', shadow: 'rgba(190,110,130,0.22)',
+      bg: 'linear-gradient(160deg, #ffd1dc 0%, #fffdf9 50%, #e8f5e9 100%)', header: '#fffdf9'
+    },
+    vertrautheit: {
+      rose: '#e86c8d', peach: '#ffd099', gold: '#f3b61f', sage: '#b2d8b2', cream: '#fffcf6',
+      text: '#432333', muted: '#a66579', shadow: 'rgba(200,110,130,0.25)',
+      bg: 'linear-gradient(160deg, #ffb3c6 0%, #fffcf6 50%, #d5eed5 100%)', header: '#fffcf6'
+    },
+    intimitat: {
+      rose: '#d64d75', peach: '#f4b26f', gold: '#e29e00', sage: '#8fbc8f', cream: '#fff6ec',
+      text: '#3d1628', muted: '#a35069', shadow: 'rgba(210,100,120,0.28)',
+      bg: 'linear-gradient(160deg, #ff8fa3 0%, #fff6ec 50%, #c1e1c1 100%)', header: '#fff6ec'
+    },
+    verbunden: {
+      rose: '#c02953', peach: '#e59b50', gold: '#c68400', sage: '#6f9e6f', cream: '#fbf4ea',
+      text: '#350a1d', muted: '#9b3b55', shadow: 'rgba(220,90,110,0.32)',
+      bg: 'linear-gradient(160deg, #ff4d6d 0%, #fbf4ea 50%, #a2d2a2 100%)', header: '#fbf4ea'
+    }
+  };
+
+  function applyPhaseTheme(phase) {
+    const theme = PHASE_THEMES[phase] || PHASE_THEMES.funke;
+    const root = document.documentElement;
+    root.style.setProperty('--rose', theme.rose);
+    root.style.setProperty('--peach', theme.peach);
+    root.style.setProperty('--gold', theme.gold);
+    root.style.setProperty('--sage', theme.sage);
+    root.style.setProperty('--cream', theme.cream);
+    root.style.setProperty('--text', theme.text);
+    root.style.setProperty('--muted', theme.muted);
+    root.style.setProperty('--shadow', theme.shadow);
+    document.body.style.background = theme.bg;
+    if (tg) {
+      tg.setHeaderColor?.(theme.header);
+    }
+  }
+
   // ── Auth header ────────────────────────────────────────
   function authHeaders() {
     return { 'Authorization': initData, 'Content-Type': 'application/json' };
   }
 
+  // ── Verbindungs-Banner ─────────────────────────────────
+  function showConnectionBanner(msg) {
+    let el = document.getElementById('connection-banner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'connection-banner';
+      el.style.cssText = [
+        'position:fixed', 'top:0', 'left:0', 'right:0',
+        'background:#f4a7b9', 'color:#4a3040', 'text-align:center',
+        'padding:10px 16px', 'font-size:0.82rem', 'font-family:Georgia,serif',
+        'z-index:9999', 'transition:opacity 0.3s',
+      ].join(';');
+      document.body.prepend(el);
+    }
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.opacity = '1';
+  }
+
+  function hideConnectionBanner() {
+    const el = document.getElementById('connection-banner');
+    if (!el) return;
+    el.style.opacity = '0';
+    setTimeout(() => { el.style.display = 'none'; }, 300);
+  }
+
+  // ── fetch mit automatischem Retry ─────────────────────
+  // - Netzwerkfehler + 5xx → bis zu maxRetries mal wiederholen
+  // - 4xx (z.B. 403 Auth) → sofort werfen, kein Retry
+  async function apiFetch(url, opts = {}, maxRetries = 3) {
+    let lastErr;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const resp = await fetch(url, opts);
+        if (resp.ok || (resp.status >= 400 && resp.status < 500)) {
+          hideConnectionBanner();
+          return resp; // Erfolg oder Client-Fehler (kein Retry)
+        }
+        throw new Error('HTTP ' + resp.status);
+      } catch (err) {
+        lastErr = err;
+        if (attempt < maxRetries - 1) {
+          const wait = 1500 * (attempt + 1); // 1.5s, 3s
+          showConnectionBanner(`Verbindung wird aufgebaut… (${attempt + 2}/${maxRetries})`);
+          await new Promise(r => setTimeout(r, wait));
+        }
+      }
+    }
+    hideConnectionBanner();
+    throw lastErr;
+  }
+
   // ── Tab switching ──────────────────────────────────────
   function switchTab(name, evt) {
     if (evt) spawnSparkle(evt.clientX, evt.clientY);
+    triggerHaptic('selection');
     document.querySelectorAll('.tab-view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + name)?.classList.add('active');
@@ -558,18 +674,21 @@
       return;
     }
     try {
-      const resp = await fetch(API + '/mini_app/dashboard', { headers: authHeaders() });
+      const resp = await apiFetch(API + '/mini_app/dashboard', { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       dashboardData = await resp.json();
       renderDashboard(dashboardData);
     } catch (err) {
       console.error('Dashboard error:', err);
-      document.getElementById('home-subtitle').textContent = 'Verbindungsfehler — bitte neu öffnen';
+      document.getElementById('home-subtitle').textContent = 'Verbindung fehlgeschlagen — schreib mir kurz im Chat 🍒';
+      showConnectionBanner('Keine Verbindung — tippe hier um es nochmal zu versuchen');
+      document.getElementById('connection-banner').onclick = () => { hideConnectionBanner(); loadDashboard(); };
     }
   }
 
   function renderDashboard(d) {
     dashboardData = d;
+    applyPhaseTheme(d.phase);
     document.getElementById('home-subtitle').textContent =
       (d.first_name ? d.first_name + ', nur' : 'Nur') + ' für dich…';
 
@@ -641,7 +760,7 @@
       return;
     }
     try {
-      const resp = await fetch(API + '/mini_app/gallery', { headers: authHeaders() });
+      const resp = await apiFetch(API + '/mini_app/gallery', { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderGallery(data);
@@ -730,7 +849,26 @@
           }
           overlay.onclick = (e) => {
             e.stopPropagation();
-            purchaseImage(img);
+            if (img.premium_required) {
+              triggerHaptic('notification', 'warning');
+              switchTab('shop');
+              setTimeout(() => {
+                const shopContainer = document.getElementById('shop-content');
+                const premiumCard = Array.from(shopContainer.querySelectorAll('.shop-item')).find(card => card.getAttribute('data-type') === 'premium_1month');
+                if (premiumCard) {
+                  premiumCard.scrollIntoView({ behavior: 'smooth' });
+                  premiumCard.style.outline = '2px solid var(--rose)';
+                  setTimeout(() => { premiumCard.style.outline = 'none'; }, 2000);
+                }
+              }, 150);
+              tg?.showPopup?.({
+                title: '💎 Premium benötigt',
+                message: 'Dieses Bild ist exklusiv für Premium-Mitglieder. Aktiviere deine Premium-Mitgliedschaft im Shop, um sofortigen Zugriff auf alle Premium-Bilder zu erhalten!',
+                buttons: [{ type: 'ok' }]
+              });
+            } else {
+              purchaseImage(img);
+            }
           };
           item.appendChild(overlay);
         }
@@ -744,17 +882,20 @@
   async function doDailyUnlock() {
     const btn = document.getElementById('btn-daily');
     btn.disabled = true; btn.textContent = '…';
+    triggerHaptic('impact', 'medium');
     try {
-      const resp = await fetch(API + '/mini_app/gallery/daily_unlock', {
+      const resp = await apiFetch(API + '/mini_app/gallery/daily_unlock', {
         method: 'POST', headers: authHeaders()
       });
       if (!resp.ok) {
+        triggerHaptic('notification', 'warning');
         const err = await resp.json();
         tg?.showAlert?.(err.detail || 'Fehler beim Freischalten');
         btn.disabled = false; btn.textContent = 'Freischalten';
         return;
       }
       const data = await resp.json();
+      triggerHaptic('notification', 'success');
       btn.textContent = 'Heute genutzt ✓';
       // Reload gallery
       galleryLoaded = false; loadGallery();
@@ -764,6 +905,7 @@
         buttons: [{ type: 'ok' }],
       });
     } catch (err) {
+      triggerHaptic('notification', 'error');
       console.error('Daily unlock error:', err);
       btn.disabled = false; btn.textContent = 'Freischalten';
     }
@@ -774,22 +916,30 @@
       tg?.showAlert?.('Bitte öffne die App über Telegram um Käufe zu tätigen.');
       return;
     }
+    triggerHaptic('impact', 'medium');
     try {
       const phase = parseInt((img.id || '').match(/phase(\d)/)?.[1] || 1);
       const itemType = phase <= 2 ? 'image_phase12' : (phase <= 4 ? 'image_phase34' : 'image_phase5');
-      const resp = await fetch(API + '/mini_app/shop/purchase', {
+      const resp = await apiFetch(API + '/mini_app/shop/purchase', {
         method: 'POST', headers: authHeaders(),
-        body: JSON.stringify({ item_type: itemType }),
+        body: JSON.stringify({ item_type: itemType, image_path: img.id }),
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        triggerHaptic('notification', 'warning');
+        throw new Error('HTTP ' + resp.status);
+      }
       const data = await resp.json();
       tg.openInvoice(data.invoice_link, (status) => {
         if (status === 'paid') {
+          triggerHaptic('notification', 'success');
           galleryLoaded = false; loadGallery();
           tg.showPopup?.({ title: '💖 Freigeschaltet!', message: 'Dein Bild wurde freigeschaltet.', buttons: [{type:'ok'}] });
+        } else {
+          triggerHaptic('notification', 'warning');
         }
       });
     } catch (err) {
+      triggerHaptic('notification', 'error');
       console.error('Purchase error:', err);
       tg?.showAlert?.('Kauf konnte nicht gestartet werden.');
     }
@@ -799,7 +949,7 @@
   async function loadGalleryLegacy() {
     const phase = dashboardData?.phase_number || 1;
     try {
-      const resp = await fetch(API + '/webhook/images/' + phase);
+      const resp = await apiFetch(API + '/webhook/images/' + phase);
       if (!resp.ok) throw new Error();
       const data = await resp.json();
       const container = document.getElementById('gallery-content');
@@ -833,7 +983,7 @@
       return;
     }
     try {
-      const resp = await fetch(API + '/mini_app/secret_messages', { headers: authHeaders() });
+      const resp = await apiFetch(API + '/mini_app/secret_messages', { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderMessages(data);
@@ -894,7 +1044,7 @@
   }
 
   async function markSeen(id) {
-    await fetch(API + `/mini_app/secret_messages/${id}/seen`, {
+    await apiFetch(API + `/mini_app/secret_messages/${id}/seen`, {
       method: 'POST', headers: authHeaders()
     });
   }
@@ -916,7 +1066,7 @@
       return;
     }
     try {
-      const resp = await fetch(API + '/mini_app/achievements', { headers: authHeaders() });
+      const resp = await apiFetch(API + '/mini_app/achievements', { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderAchievements(data);
@@ -952,17 +1102,17 @@
   const SHOP_ICONS = {
     image_phase12:'🌸', image_phase34:'🌹', image_phase5:'💫',
     streak_freeze:'❄️', phase_boost_s:'💫', phase_boost_m:'✨', phase_boost_l:'🌟',
-    gift_roses:'🌹', gift_champagne:'🍾', gift_trip:'✈️',
+    gift_roses:'🌹', gift_champagne:'🍾', gift_trip:'✈️', premium_1month:'💎',
   };
   const SHOP_CATEGORIES = {
-    image:'📸 Exklusive Bilder', boost:'🚀 Nähe-Boosts', gift:'🎁 Geschenke',
+    image:'📸 Exklusive Bilder', boost:'🚀 Nähe-Boosts', gift:'🎁 Geschenke', premium:'💎 Premium-Mitgliedschaft',
   };
 
   async function loadShop() {
     shopLoaded = true;
     try {
       const headers = initData ? authHeaders() : {};
-      const resp = await fetch(API + '/mini_app/shop', { headers });
+      const resp = await apiFetch(API + '/mini_app/shop', { headers });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderShop(data.items || []);
@@ -991,6 +1141,7 @@
       for (const item of catItems) {
         const row = document.createElement('div');
         row.className = 'shop-item' + (item.available ? '' : ' unavailable');
+        row.setAttribute('data-type', item.item_type);
         const btn = document.createElement('button');
         btn.className = 'shop-price';
         btn.textContent = `⭐ ${item.stars}`;
@@ -1014,15 +1165,20 @@
       tg?.showAlert?.('Bitte öffne die App über Telegram um Käufe zu tätigen.');
       return;
     }
+    triggerHaptic('impact', 'medium');
     try {
-      const resp = await fetch(API + '/mini_app/shop/purchase', {
+      const resp = await apiFetch(API + '/mini_app/shop/purchase', {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ item_type: item.item_type }),
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      if (!resp.ok) {
+        triggerHaptic('notification', 'warning');
+        throw new Error('HTTP ' + resp.status);
+      }
       const data = await resp.json();
       tg.openInvoice(data.invoice_link, (status) => {
         if (status === 'paid') {
+          triggerHaptic('notification', 'success');
           shopLoaded = false; loadShop();
           // Reload dashboard to reflect new investment/phase
           loadDashboard();
@@ -1031,9 +1187,12 @@
             message: `${item.label} erfolgreich gekauft.`,
             buttons: [{ type: 'ok' }],
           });
+        } else {
+          triggerHaptic('notification', 'warning');
         }
       });
     } catch (err) {
+      triggerHaptic('notification', 'error');
       console.error('Shop purchase error:', err);
       tg?.showAlert?.('Kauf konnte nicht gestartet werden.');
     }
