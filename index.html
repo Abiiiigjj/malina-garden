@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>Malina's Secret Garden</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="./api-url.js"></script>
   <style>
     :root {
       --rose:   #f4a7b9;
@@ -469,6 +470,7 @@
   const params  = new URLSearchParams(window.location.search);
   // Trailing slash entfernen damit fetch-URLs kein doppeltes // produzieren
   const API     = (params.get('api') || '/api').replace(/\/$/, '');
+  const apiUrl  = createApiUrl(API);
   const initData = tg?.initData || '';
 
   // App state
@@ -674,7 +676,7 @@
       return;
     }
     try {
-      const resp = await apiFetch(API + '/mini_app/dashboard', { headers: authHeaders() });
+      const resp = await apiFetch(apiUrl('/mini_app/dashboard'), { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       dashboardData = await resp.json();
       renderDashboard(dashboardData);
@@ -760,7 +762,7 @@
       return;
     }
     try {
-      const resp = await apiFetch(API + '/mini_app/gallery', { headers: authHeaders() });
+      const resp = await apiFetch(apiUrl('/mini_app/gallery'), { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderGallery(data);
@@ -819,7 +821,7 @@
           const el = document.createElement('img');
           el.loading = 'lazy';
           el.alt = 'Malina';
-          el.src = API + img.url;
+          el.src = apiUrl(img.url);
           el.onerror = () => { item.innerHTML = '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem;">🌸</div>'; };
           item.appendChild(el);
           if (img.exclusive) {
@@ -827,21 +829,27 @@
             tag.className = 'exclusive-tag'; tag.textContent = 'Exklusiv';
             item.appendChild(tag);
           }
-          const urlFull = API + img.url;
+          const urlFull = apiUrl(img.url);
           item.onclick = () => openLightbox(urlFull);
         } else {
-          // Locked: blur preview + overlay
+          // Locked: only render a server-provided safe preview. The full image
+          // URL must not be exposed and merely hidden with a CSS blur.
           item.className += ' loading-item';
-          const el = document.createElement('img');
-          el.loading = 'lazy'; el.alt = '';
-          el.className = 'blur-img';
-          el.src = API + (img.blur_thumbnail_url || img.url);
-          el.onerror = () => {};
-          item.appendChild(el);
+          if (img.blur_thumbnail_url) {
+            const el = document.createElement('img');
+            el.loading = 'lazy'; el.alt = '';
+            el.className = 'blur-img';
+            el.src = apiUrl(img.blur_thumbnail_url);
+            el.onerror = () => { el.remove(); };
+            item.appendChild(el);
+          }
 
           const overlay = document.createElement('div');
           overlay.className = 'lock-overlay';
-          overlay.innerHTML = `<span class="lock-icon">🔒</span><span class="lock-price">⭐ ${img.purchase_price_stars || '?'}</span>`;
+          const lockLabel = img.phase_locked
+            ? (gallery.unlock_requirement || `Phase ${gallery.phase}`)
+            : (img.premium_required ? 'Premium' : `⭐ ${img.purchase_price_stars}`);
+          overlay.innerHTML = `<span class="lock-icon">🔒</span><span class="lock-price">${escHtml(lockLabel)}</span>`;
           if (img.exclusive) {
             const tag = document.createElement('span');
             tag.className = 'exclusive-tag'; tag.textContent = 'Exklusiv';
@@ -866,8 +874,10 @@
                 message: 'Dieses Bild ist exklusiv für Premium-Mitglieder. Aktiviere deine Premium-Mitgliedschaft im Shop, um sofortigen Zugriff auf alle Premium-Bilder zu erhalten!',
                 buttons: [{ type: 'ok' }]
               });
-            } else {
+            } else if (!img.phase_locked && img.purchase_price_stars) {
               purchaseImage(img);
+            } else {
+              triggerHaptic('notification', 'warning');
             }
           };
           item.appendChild(overlay);
@@ -884,7 +894,7 @@
     btn.disabled = true; btn.textContent = '…';
     triggerHaptic('impact', 'medium');
     try {
-      const resp = await apiFetch(API + '/mini_app/gallery/daily_unlock', {
+      const resp = await apiFetch(apiUrl('/mini_app/gallery/daily_unlock'), {
         method: 'POST', headers: authHeaders()
       });
       if (!resp.ok) {
@@ -920,7 +930,7 @@
     try {
       const phase = parseInt((img.id || '').match(/phase(\d)/)?.[1] || 1);
       const itemType = phase <= 2 ? 'image_phase12' : (phase <= 4 ? 'image_phase34' : 'image_phase5');
-      const resp = await apiFetch(API + '/mini_app/shop/purchase', {
+      const resp = await apiFetch(apiUrl('/mini_app/shop/purchase'), {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ item_type: itemType, image_path: img.id }),
       });
@@ -949,7 +959,7 @@
   async function loadGalleryLegacy() {
     const phase = dashboardData?.phase_number || 1;
     try {
-      const resp = await apiFetch(API + '/webhook/images/' + phase);
+      const resp = await apiFetch(apiUrl('/webhook/images/' + phase));
       if (!resp.ok) throw new Error();
       const data = await resp.json();
       const container = document.getElementById('gallery-content');
@@ -959,9 +969,9 @@
       for (const img of (data.images || [])) {
         const item = document.createElement('div'); item.className = 'gallery-item';
         const el = document.createElement('img'); el.loading='lazy'; el.alt='Malina';
-        el.src = API + img.url;
+        el.src = apiUrl(img.url);
         item.appendChild(el);
-        const url = API + img.url;
+        const url = apiUrl(img.url);
         item.onclick = () => openLightbox(url);
         grid.appendChild(item);
       }
@@ -983,7 +993,7 @@
       return;
     }
     try {
-      const resp = await apiFetch(API + '/mini_app/secret_messages', { headers: authHeaders() });
+      const resp = await apiFetch(apiUrl('/mini_app/secret_messages'), { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderMessages(data);
@@ -1044,7 +1054,7 @@
   }
 
   async function markSeen(id) {
-    await apiFetch(API + `/mini_app/secret_messages/${id}/seen`, {
+    await apiFetch(apiUrl(`/mini_app/secret_messages/${id}/seen`), {
       method: 'POST', headers: authHeaders()
     });
   }
@@ -1066,7 +1076,7 @@
       return;
     }
     try {
-      const resp = await apiFetch(API + '/mini_app/achievements', { headers: authHeaders() });
+      const resp = await apiFetch(apiUrl('/mini_app/achievements'), { headers: authHeaders() });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderAchievements(data);
@@ -1112,7 +1122,7 @@
     shopLoaded = true;
     try {
       const headers = initData ? authHeaders() : {};
-      const resp = await apiFetch(API + '/mini_app/shop', { headers });
+      const resp = await apiFetch(apiUrl('/mini_app/shop'), { headers });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
       renderShop(data.items || []);
@@ -1167,7 +1177,7 @@
     }
     triggerHaptic('impact', 'medium');
     try {
-      const resp = await apiFetch(API + '/mini_app/shop/purchase', {
+      const resp = await apiFetch(apiUrl('/mini_app/shop/purchase'), {
         method: 'POST', headers: authHeaders(),
         body: JSON.stringify({ item_type: item.item_type }),
       });
